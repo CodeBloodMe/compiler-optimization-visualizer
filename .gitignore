@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Compiler & IR outputs
+*.ll
+*.bc
+*.s
+*.o
+*.out
+*.exe
+*.obj
+*.pdb
+*.ilk
+
+# Benchmarks & temporary outputs
+/results/
+/tmp/
+/scratch/
+*.log
+
+# Node & Frontend (if applicable for visualizer UI)
+node_modules/
+.npm
+.pnpm-store
+.next/
+out/
+
+# IDE & Editor configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
