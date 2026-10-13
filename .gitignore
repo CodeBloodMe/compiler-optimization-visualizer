@@ -1,3 +1,7 @@
+# Rust
+/target/
+*.wasm
+
 # Python
 __pycache__/
 *.py[cod]

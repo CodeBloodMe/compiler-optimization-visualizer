@@ -1,0 +1,9 @@
+module loop_fuel;
+
+fn main() -> i32 {
+    let mut i: i32 = 0;
+    while i < 10000000 {
+        i = i + 1;
+    }
+    return i;
+}

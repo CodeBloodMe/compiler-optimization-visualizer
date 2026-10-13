@@ -1,0 +1,9 @@
+{
+  "avg_compile_ms": 34.81951999965531,
+  "avg_analysis_ms": 26.223600000048464,
+  "detection_rate_pct": 100.0,
+  "false_positive_pct": 0.0,
+  "size_reduction_pct": 7.804878048780488,
+  "fuel_reduction_pct": 44.44444444444444,
+  "resource_limit_enforced": true
+}

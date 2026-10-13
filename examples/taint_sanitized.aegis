@@ -1,0 +1,10 @@
+module taint_sanitized;
+
+requires console.write;
+
+fn main() -> i32 {
+    let raw: i32 = read_i32();
+    let safe_val: i32 = sanitize_i32(raw);
+    print_i32(safe_val);
+    return 0;
+}

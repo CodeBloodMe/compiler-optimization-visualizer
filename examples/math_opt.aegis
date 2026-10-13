@@ -1,0 +1,12 @@
+module math_opt;
+
+requires console.write;
+
+fn main() -> i32 {
+    let a: i32 = 10 + 20 * 3;
+    let b: i32 = a + 0;
+    let c: i32 = b * 1;
+    print_i32(c);
+    return c;
+    print_i32(999);
+}

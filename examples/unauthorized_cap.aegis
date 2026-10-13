@@ -1,0 +1,8 @@
+module unauthorized_cap;
+
+requires console.write;
+
+fn main() -> i32 {
+    print_i32(999);
+    return 0;
+}

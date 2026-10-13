@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aegis: Security-First, Resource-Bounded WebAssembly Compiler</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="logo-area">
+      <div class="logo-icon">🛡️</div>
+      <div class="title-group">
+        <h1>AEGIS COMPILER &amp; VISUALIZER</h1>
+        <p>Security-First • Resource-Bounded • WebAssembly Target</p>
+      </div>
+    </div>
+    <div class="badge-group">
+      <span class="badge primary">Rust Compiler</span>
+      <span class="badge primary">Target: WebAssembly</span>
+      <span class="badge success">Runtime: Wasmtime v49</span>
+      <span class="badge success">Deterministic Fuel</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left Panel: Source Editor & Policy Controls -->
+    <section class="panel">
+      <div class="panel-header">
+        <h2><span>📝</span> AegisLang Source Code</h2>
+        <div class="toolbar">
+          <label for="exampleSelect" style="font-size: 0.75rem; color: var(--text-muted);">Preset:</label>
+          <select id="exampleSelect"></select>
+        </div>
+      </div>
+
+      <div class="editor-container">
+        <textarea id="sourceEditor" spellcheck="false"></textarea>
+      </div>
+
+      <div class="policy-bar">
+        <div class="policy-item">
+          <label for="capConsoleWrite">Cap: console.write</label>
+          <input type="checkbox" id="capConsoleWrite" checked>
+        </div>
+        <div class="policy-item">
+          <label for="capHostRead">Cap: host.read</label>
+          <input type="checkbox" id="capHostRead" checked>
+        </div>
+        <div class="policy-item">
+          <label for="fuelInput">Fuel Budget:</label>
+          <input type="number" id="fuelInput" value="1000000" style="width: 100px;">
+        </div>
+      </div>
+
+      <div class="panel-header" style="border-top: 1px solid var(--border); border-bottom: none;">
+        <div class="toolbar">
+          <button id="btnCheck" class="btn btn-secondary">🔍 Check Syntax</button>
+          <button id="btnRun" class="btn btn-primary">⚡ Compile &amp; Run</button>
+          <button id="btnAnalyze" class="btn btn-accent">🛡️ Analyze Taint</button>
+          <button id="btnOptimize" class="btn btn-secondary">🚀 Benchmark Opt</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Panel: Output, Analysis, & Benchmarks -->
+    <section class="panel">
+      <div class="panel-header">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="tabConsole">📺 Execution Console</button>
+          <button class="tab-btn" data-tab="tabSecurity">🛡️ Security Taint</button>
+          <button class="tab-btn" data-tab="tabOpt">⚡ Optimization Delta</button>
+          <button class="tab-btn" data-tab="tabBenchmarks">📊 Benchmarks</button>
+        </div>
+      </div>
+
+      <div id="tabConsole" class="tab-content active">
+        <pre id="consoleOutput">Welcome to Aegis Compiler Dashboard.
+Click 'Compile & Run' to compile AegisLang into WebAssembly and execute inside Wasmtime with resource bounds.</pre>
+      </div>
+
+      <div id="tabSecurity" class="tab-content">
+        <div id="securityOutput">
+          <p style="color: var(--text-muted);">Click 'Analyze Taint' to inspect dataflow tracking, sources, sanitizers, and sensitive sinks.</p>
+        </div>
+      </div>
+
+      <div id="tabOpt" class="tab-content">
+        <div id="optOutput">
+          <p style="color: var(--text-muted);">Click 'Benchmark Opt' to compare unoptimized vs security-aware optimized WebAssembly binaries.</p>
+        </div>
+      </div>
+
+      <div id="tabBenchmarks" class="tab-content">
+        <div id="benchmarkStats">Loading benchmark data...</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+[capabilities]
+console_write = true
+host_read = true
+
+[resources]
+initial_fuel = 1000000
+max_memory_pages = 16
+
+[security]
+strict_imports = true
+deny_unknown_imports = true
