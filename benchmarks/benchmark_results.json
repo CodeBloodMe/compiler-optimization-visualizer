@@ -1,9 +1,60 @@
 {
-  "avg_compile_ms": 34.81951999965531,
-  "avg_analysis_ms": 26.223600000048464,
+  "avg_compile_ms": 114.81,
+  "avg_analysis_ms": 14.39,
   "detection_rate_pct": 100.0,
   "false_positive_pct": 0.0,
-  "size_reduction_pct": 7.804878048780488,
-  "fuel_reduction_pct": 44.44444444444444,
+  "corpus_size": 8,
+  "corpus_details": [
+    {
+      "file": "taint_vulnerability.aegis",
+      "expected_vulnerable": true,
+      "detected_vulnerable": true,
+      "status": "TP (Detected expected vulnerability)"
+    },
+    {
+      "file": "branch_leak.aegis",
+      "expected_vulnerable": true,
+      "detected_vulnerable": true,
+      "status": "TP (Detected expected vulnerability)"
+    },
+    {
+      "file": "loop_carried_taint.aegis",
+      "expected_vulnerable": true,
+      "detected_vulnerable": true,
+      "status": "TP (Detected expected vulnerability)"
+    },
+    {
+      "file": "taint_sanitized.aegis",
+      "expected_vulnerable": false,
+      "detected_vulnerable": false,
+      "status": "TN (Clean program verified)"
+    },
+    {
+      "file": "both_sanitized.aegis",
+      "expected_vulnerable": false,
+      "detected_vulnerable": false,
+      "status": "TN (Clean program verified)"
+    },
+    {
+      "file": "scoped_shadow_clean.aegis",
+      "expected_vulnerable": false,
+      "detected_vulnerable": false,
+      "status": "TN (Clean program verified)"
+    },
+    {
+      "file": "hello.aegis",
+      "expected_vulnerable": false,
+      "detected_vulnerable": false,
+      "status": "TN (Clean program verified)"
+    },
+    {
+      "file": "loop_fuel.aegis",
+      "expected_vulnerable": false,
+      "detected_vulnerable": false,
+      "status": "TN (Clean program verified)"
+    }
+  ],
+  "size_reduction_pct": 12.9,
+  "fuel_reduction_pct": 44.4,
   "resource_limit_enforced": true
 }

@@ -1,0 +1,15 @@
+module both_sanitized;
+
+requires console.write;
+requires host.read;
+
+fn main() -> i32 {
+    let mut val: i32 = read_i32();
+    if true {
+        val = sanitize_i32(val);
+    } else {
+        val = sanitize_i32(val);
+    }
+    print_i32(val);
+    return 0;
+}

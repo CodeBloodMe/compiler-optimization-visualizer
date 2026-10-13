@@ -1,0 +1,13 @@
+module scoped_shadow_clean;
+
+requires console.write;
+requires host.read;
+
+fn main() -> i32 {
+    let clean: i32 = 100;
+    if true {
+        let clean: i32 = read_i32();
+    }
+    print_i32(clean);
+    return 0;
+}

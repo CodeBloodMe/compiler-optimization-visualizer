@@ -137,7 +137,9 @@ impl<'a> Lexer<'a> {
                 break;
             };
 
-            let span_for = |end_line: usize, end_col: usize| Span::new(start_line, start_col, end_line, end_col);
+            let span_for = |end_line: usize, end_col: usize| {
+                Span::new(start_line, start_col, end_line, end_col)
+            };
 
             // Two-character and one-character symbols
             match ch {
@@ -346,6 +348,15 @@ impl<'a> Lexer<'a> {
                             span_for(self.line, self.col - 1),
                         )
                     })?;
+                    if val > 2147483648 {
+                        return Err(Diagnostic::error(
+                            format!(
+                                "Integer literal '{}' out of range for i32 (exceeds maximum magnitude 2147483648)",
+                                num_str
+                            ),
+                            span_for(self.line, self.col - 1),
+                        ));
+                    }
                     tokens.push(Token {
                         kind: TokenKind::IntLiteral(val),
                         span: span_for(self.line, self.col - 1),

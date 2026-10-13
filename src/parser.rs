@@ -214,16 +214,7 @@ impl Parser {
             TokenKind::If => self.parse_if_statement(),
             TokenKind::While => self.parse_while_statement(),
             TokenKind::Return => self.parse_return_statement(),
-            TokenKind::Ident(_) => {
-                // Could be assignment or expr statement
-                if self.is_assignment_ahead() {
-                    self.parse_assign_statement()
-                } else {
-                    let expr = self.parse_expression()?;
-                    self.expect(TokenKind::Semi, "after expression statement")?;
-                    Ok(Statement::Expr(expr))
-                }
-            }
+            TokenKind::Ident(_) if self.is_assignment_ahead() => self.parse_assign_statement(),
             _ => {
                 let expr = self.parse_expression()?;
                 self.expect(TokenKind::Semi, "after expression statement")?;

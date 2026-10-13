@@ -1,6 +1,6 @@
+use anyhow::Result;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use anyhow::Result;
 use thiserror::Error;
 use wasmtime::*;
 
@@ -9,10 +9,7 @@ use crate::policy::AegisPolicy;
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum RuntimeError {
     #[error("Policy violation: capability '{capability}' denied by runtime policy: {details}")]
-    PolicyViolation {
-        capability: String,
-        details: String,
-    },
+    PolicyViolation { capability: String, details: String },
 
     #[error("Unknown import rejected: module '{module}', name '{name}' is not authorized")]
     UnknownImport { module: String, name: String },
@@ -20,7 +17,9 @@ pub enum RuntimeError {
     #[error("Fuel exhausted: program exceeded the configured execution fuel budget")]
     FuelExhausted,
 
-    #[error("Linear memory limit exceeded: requested memory exceeds maximum allowed ({max_pages} pages)")]
+    #[error(
+        "Linear memory limit exceeded: requested memory exceeds maximum allowed ({max_pages} pages)"
+    )]
     MemoryLimitExceeded { max_pages: u32 },
 
     #[error("WebAssembly runtime trap: {0}")]
@@ -192,10 +191,11 @@ impl AegisRuntime {
             });
         }
 
-        // Bind read_i32
+        // Bind read_i32: Explicitly labeled mocked runtime input fixture
         if policy.is_capability_granted("host.read") {
             let _ = linker.func_wrap("aegis_host", "read_i32", || -> i32 {
-                42 // Default mock un-trusted input for deterministic evaluation
+                // [MOCKED RUNTIME INPUT]: Deterministic host test fixture (42) for reproducible evaluation
+                42
             });
         }
 
@@ -241,7 +241,10 @@ impl AegisRuntime {
                     Err(trap) => {
                         let trap_str = trap.to_string();
                         let current_fuel = store.get_fuel().unwrap_or(1);
-                        if current_fuel == 0 || trap_str.contains("fuel") || trap_str.contains("exhausted") {
+                        if current_fuel == 0
+                            || trap_str.contains("fuel")
+                            || trap_str.contains("exhausted")
+                        {
                             (-1, Some(RuntimeError::FuelExhausted))
                         } else if trap_str.contains("memory") || trap_str.contains("out of bounds")
                         {

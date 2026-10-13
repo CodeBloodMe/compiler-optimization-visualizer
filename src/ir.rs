@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::fmt;
 use crate::ast::*;
 use crate::source::{Diagnostic, Span};
 use crate::types::Type;
+use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IrType {
@@ -199,6 +199,8 @@ impl fmt::Display for IrProgram {
 pub struct IrLowerer {
     next_temp: usize,
     next_block_id: usize,
+    current_block_id: usize,
+    current_terminated: bool,
     locals: Vec<(String, IrType)>,
     local_indices: HashMap<String, usize>,
     blocks: Vec<BasicBlock>,
@@ -210,13 +212,23 @@ impl IrLowerer {
         Self {
             next_temp: 0,
             next_block_id: 0,
+            current_block_id: 0,
+            current_terminated: false,
             locals: Vec::new(),
             local_indices: HashMap::new(),
             blocks: Vec::new(),
             current_insts: Vec::new(),
         }
     }
+}
 
+impl Default for IrLowerer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IrLowerer {
     fn new_temp(&mut self) -> IrOperand {
         let t = self.next_temp;
         self.next_temp += 1;
@@ -231,7 +243,11 @@ impl IrLowerer {
 
     pub fn lower_program(program: &Program) -> Result<IrProgram, Diagnostic> {
         let mut ir_functions = Vec::new();
-        let capabilities = program.capabilities.iter().map(|c| c.name.clone()).collect();
+        let capabilities = program
+            .capabilities
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
 
         for f in &program.functions {
             let mut lowerer = IrLowerer::new();
@@ -267,18 +283,19 @@ impl IrLowerer {
         }
 
         let entry_id = self.new_block_id();
+        self.start_block(entry_id);
         let ret_ty = IrType::from(f.return_type);
 
         self.lower_block(&f.body)?;
 
         // Ensure entry block or current block has a terminator
-        if !self.current_is_terminated() {
+        if !self.current_terminated {
             let default_term = if ret_ty == IrType::Void {
                 IrTerminator::Return(None)
             } else {
                 IrTerminator::Return(Some(IrOperand::ConstI32(0)))
             };
-            self.finish_block(entry_id, "exit", default_term);
+            self.finish_block("exit", default_term);
         }
 
         Ok(IrFunction {
@@ -290,19 +307,20 @@ impl IrLowerer {
         })
     }
 
-    fn current_is_terminated(&self) -> bool {
-        // If current_insts is empty and we have at least one block, check if last block terminated
-        false
+    fn start_block(&mut self, id: usize) {
+        self.current_block_id = id;
+        self.current_terminated = false;
     }
 
-    fn finish_block(&mut self, id: usize, label: &str, terminator: IrTerminator) {
+    fn finish_block(&mut self, label: &str, terminator: IrTerminator) {
         let instructions = std::mem::take(&mut self.current_insts);
         self.blocks.push(BasicBlock {
-            id,
+            id: self.current_block_id,
             label: label.to_string(),
             instructions,
             terminator,
         });
+        self.current_terminated = true;
     }
 
     fn lower_block(&mut self, block: &Block) -> Result<(), Diagnostic> {
@@ -313,6 +331,10 @@ impl IrLowerer {
     }
 
     fn lower_statement(&mut self, stmt: &Statement) -> Result<(), Diagnostic> {
+        if self.current_terminated {
+            return Ok(());
+        }
+
         match stmt {
             Statement::Let {
                 name,
@@ -357,9 +379,7 @@ impl IrLowerer {
                 let else_id = self.new_block_id();
                 let merge_id = self.new_block_id();
 
-                let cur_id = self.blocks.len();
                 self.finish_block(
-                    cur_id,
                     "if.cond",
                     IrTerminator::Branch {
                         cond: cond_op,
@@ -369,16 +389,23 @@ impl IrLowerer {
                 );
 
                 // Then block
+                self.start_block(then_id);
                 self.lower_block(then_block)?;
-                self.finish_block(then_id, "if.then", IrTerminator::Jump(merge_id));
+                if !self.current_terminated {
+                    self.finish_block("if.then", IrTerminator::Jump(merge_id));
+                }
 
                 // Else block
+                self.start_block(else_id);
                 if let Some(eb) = else_block {
                     self.lower_block(eb)?;
                 }
-                self.finish_block(else_id, "if.else", IrTerminator::Jump(merge_id));
+                if !self.current_terminated {
+                    self.finish_block("if.else", IrTerminator::Jump(merge_id));
+                }
 
                 // Merge block continues as active block
+                self.start_block(merge_id);
                 Ok(())
             }
             Statement::While {
@@ -390,13 +417,12 @@ impl IrLowerer {
                 let body_id = self.new_block_id();
                 let exit_id = self.new_block_id();
 
-                let cur_id = self.blocks.len();
-                self.finish_block(cur_id, "while.pre", IrTerminator::Jump(cond_id));
+                self.finish_block("while.pre", IrTerminator::Jump(cond_id));
 
                 // Condition block
+                self.start_block(cond_id);
                 let cond_op = self.lower_expr(cond)?;
                 self.finish_block(
-                    cond_id,
                     "while.cond",
                     IrTerminator::Branch {
                         cond: cond_op,
@@ -406,10 +432,14 @@ impl IrLowerer {
                 );
 
                 // Body block
+                self.start_block(body_id);
                 self.lower_block(body)?;
-                self.finish_block(body_id, "while.body", IrTerminator::Jump(cond_id));
+                if !self.current_terminated {
+                    self.finish_block("while.body", IrTerminator::Jump(cond_id));
+                }
 
                 // Exit block continues as active block
+                self.start_block(exit_id);
                 Ok(())
             }
             Statement::Return { value, span: _ } => {
@@ -418,8 +448,7 @@ impl IrLowerer {
                 } else {
                     None
                 };
-                let cur_id = self.blocks.len();
-                self.finish_block(cur_id, "ret.block", IrTerminator::Return(ret_op));
+                self.finish_block("ret.block", IrTerminator::Return(ret_op));
                 Ok(())
             }
             Statement::Expr(e) => {
@@ -437,7 +466,12 @@ impl IrLowerer {
                 let idx = *self.local_indices.get(name).unwrap();
                 Ok(IrOperand::Local(idx))
             }
-            Expr::Binary { op, lhs, rhs, span: _ } => {
+            Expr::Binary {
+                op,
+                lhs,
+                rhs,
+                span: _,
+            } => {
                 let l_op = self.lower_expr(lhs)?;
                 let r_op = self.lower_expr(rhs)?;
                 let dest = self.new_temp();
@@ -478,7 +512,11 @@ impl IrLowerer {
                 });
                 Ok(dest)
             }
-            Expr::Call { callee, args, span: _ } => {
+            Expr::Call {
+                callee,
+                args,
+                span: _,
+            } => {
                 let mut ir_args = Vec::new();
                 for a in args {
                     ir_args.push(self.lower_expr(a)?);

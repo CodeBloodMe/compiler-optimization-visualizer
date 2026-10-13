@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use wasm_encoder::{
-    CodeSection, ExportKind, ExportSection, Function, FunctionSection, ImportSection,
-    Instruction, MemorySection, MemoryType, Module, TypeSection, ValType,
+    CodeSection, ExportKind, ExportSection, Function, FunctionSection, ImportSection, Instruction,
+    MemorySection, MemoryType, Module, TypeSection, ValType,
 };
 use wasmparser::{Validator, WasmFeatures};
 
@@ -29,7 +29,15 @@ impl WasmCodegen {
             next_type_idx: 0,
         }
     }
+}
 
+impl Default for WasmCodegen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WasmCodegen {
     pub fn compile(program: &Program) -> Result<Vec<u8>, Diagnostic> {
         let mut codegen = WasmCodegen::new();
         codegen.generate(program)
@@ -43,62 +51,85 @@ impl WasmCodegen {
         let mut exports = ExportSection::new();
         let mut codes = CodeSection::new();
 
-        // 1. Register host import types
-        // type 0: (i32) -> () (print_i32, print_bool)
-        let print_type_idx = self.next_type_idx;
-        types.ty().function(vec![ValType::I32], vec![]);
-        self.next_type_idx += 1;
+        // 0. Collect all host functions actually used in the program
+        let mut used_calls = HashSet::new();
+        for f in &program.functions {
+            Self::collect_calls_in_block(&f.body, &mut used_calls);
+        }
 
-        // type 1: () -> (i32) (read_i32)
-        let read_type_idx = self.next_type_idx;
-        types.ty().function(vec![], vec![ValType::I32]);
-        self.next_type_idx += 1;
+        let has_print_i32 = used_calls.contains("print_i32");
+        let has_print_bool = used_calls.contains("print_bool");
+        let has_read_i32 = used_calls.contains("read_i32");
+        let has_sanitize_i32 = used_calls.contains("sanitize_i32");
 
-        // type 2: (i32) -> (i32) (sanitize_i32)
-        let sanitize_type_idx = self.next_type_idx;
-        types.ty().function(vec![ValType::I32], vec![ValType::I32]);
-        self.next_type_idx += 1;
+        // 1. Register host import types and imports only for actually used functions
+        let mut print_type_idx = None;
+        if has_print_i32 || has_print_bool {
+            let idx = self.next_type_idx;
+            types.ty().function(vec![ValType::I32], vec![]);
+            self.next_type_idx += 1;
+            print_type_idx = Some(idx);
+        }
 
-        // Add standard host imports
-        // print_i32
-        imports.import(
-            "aegis_host",
-            "print_i32",
-            wasm_encoder::EntityType::Function(print_type_idx),
-        );
-        self.function_indices
-            .insert("print_i32".to_string(), self.next_func_idx);
-        self.next_func_idx += 1;
+        let mut read_type_idx = None;
+        if has_read_i32 {
+            let idx = self.next_type_idx;
+            types.ty().function(vec![], vec![ValType::I32]);
+            self.next_type_idx += 1;
+            read_type_idx = Some(idx);
+        }
 
-        // print_bool
-        imports.import(
-            "aegis_host",
-            "print_bool",
-            wasm_encoder::EntityType::Function(print_type_idx),
-        );
-        self.function_indices
-            .insert("print_bool".to_string(), self.next_func_idx);
-        self.next_func_idx += 1;
+        let mut sanitize_type_idx = None;
+        if has_sanitize_i32 {
+            let idx = self.next_type_idx;
+            types.ty().function(vec![ValType::I32], vec![ValType::I32]);
+            self.next_type_idx += 1;
+            sanitize_type_idx = Some(idx);
+        }
 
-        // read_i32
-        imports.import(
-            "aegis_host",
-            "read_i32",
-            wasm_encoder::EntityType::Function(read_type_idx),
-        );
-        self.function_indices
-            .insert("read_i32".to_string(), self.next_func_idx);
-        self.next_func_idx += 1;
+        if has_print_i32 {
+            imports.import(
+                "aegis_host",
+                "print_i32",
+                wasm_encoder::EntityType::Function(print_type_idx.unwrap()),
+            );
+            self.function_indices
+                .insert("print_i32".to_string(), self.next_func_idx);
+            self.next_func_idx += 1;
+        }
 
-        // sanitize_i32
-        imports.import(
-            "aegis_host",
-            "sanitize_i32",
-            wasm_encoder::EntityType::Function(sanitize_type_idx),
-        );
-        self.function_indices
-            .insert("sanitize_i32".to_string(), self.next_func_idx);
-        self.next_func_idx += 1;
+        if has_print_bool {
+            imports.import(
+                "aegis_host",
+                "print_bool",
+                wasm_encoder::EntityType::Function(print_type_idx.unwrap()),
+            );
+            self.function_indices
+                .insert("print_bool".to_string(), self.next_func_idx);
+            self.next_func_idx += 1;
+        }
+
+        if has_read_i32 {
+            imports.import(
+                "aegis_host",
+                "read_i32",
+                wasm_encoder::EntityType::Function(read_type_idx.unwrap()),
+            );
+            self.function_indices
+                .insert("read_i32".to_string(), self.next_func_idx);
+            self.next_func_idx += 1;
+        }
+
+        if has_sanitize_i32 {
+            imports.import(
+                "aegis_host",
+                "sanitize_i32",
+                wasm_encoder::EntityType::Function(sanitize_type_idx.unwrap()),
+            );
+            self.function_indices
+                .insert("sanitize_i32".to_string(), self.next_func_idx);
+            self.next_func_idx += 1;
+        }
 
         // 2. Register user functions
         for f in &program.functions {
@@ -150,7 +181,9 @@ impl WasmCodegen {
         }
 
         module.section(&types);
-        module.section(&imports);
+        if !imports.is_empty() {
+            module.section(&imports);
+        }
         module.section(&functions);
         module.section(&memory);
         module.section(&exports);
@@ -233,6 +266,69 @@ impl WasmCodegen {
         }
     }
 
+    fn collect_calls_in_block(block: &Block, calls: &mut HashSet<String>) {
+        for stmt in &block.statements {
+            Self::collect_calls_in_stmt(stmt, calls);
+        }
+    }
+
+    fn collect_calls_in_stmt(stmt: &Statement, calls: &mut HashSet<String>) {
+        match stmt {
+            Statement::Let { init, .. } => {
+                Self::collect_calls_in_expr(init, calls);
+            }
+            Statement::Assign { value, .. } => {
+                Self::collect_calls_in_expr(value, calls);
+            }
+            Statement::If {
+                cond,
+                then_block,
+                else_block,
+                ..
+            } => {
+                Self::collect_calls_in_expr(cond, calls);
+                Self::collect_calls_in_block(then_block, calls);
+                if let Some(eb) = else_block {
+                    Self::collect_calls_in_block(eb, calls);
+                }
+            }
+            Statement::While { cond, body, .. } => {
+                Self::collect_calls_in_expr(cond, calls);
+                Self::collect_calls_in_block(body, calls);
+            }
+            Statement::Return { value, .. } => {
+                if let Some(v) = value {
+                    Self::collect_calls_in_expr(v, calls);
+                }
+            }
+            Statement::Expr(e) => {
+                Self::collect_calls_in_expr(e, calls);
+            }
+        }
+    }
+
+    fn collect_calls_in_expr(expr: &Expr, calls: &mut HashSet<String>) {
+        match expr {
+            Expr::Call { callee, args, .. } => {
+                calls.insert(callee.clone());
+                for a in args {
+                    Self::collect_calls_in_expr(a, calls);
+                }
+            }
+            Expr::Binary { lhs, rhs, .. } => {
+                Self::collect_calls_in_expr(lhs, calls);
+                Self::collect_calls_in_expr(rhs, calls);
+            }
+            Expr::Unary { expr, .. } => {
+                Self::collect_calls_in_expr(expr, calls);
+            }
+            Expr::Block(b) => {
+                Self::collect_calls_in_block(b, calls);
+            }
+            _ => {}
+        }
+    }
+
     fn compile_block(
         &self,
         block: &Block,
@@ -292,7 +388,7 @@ impl WasmCodegen {
                 //   }
                 // }
                 func.instruction(&Instruction::Block(wasm_encoder::BlockType::Empty)); // block 0 (exit)
-                func.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));  // loop 1 (continue)
+                func.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty)); // loop 1 (continue)
 
                 self.compile_expr(cond, locals, func)?;
                 func.instruction(&Instruction::I32Eqz);
@@ -321,7 +417,11 @@ impl WasmCodegen {
                             func.instruction(&Instruction::Drop);
                         }
                     }
-                    Expr::Integer(_, _) | Expr::Boolean(_, _) | Expr::Variable(_, _) | Expr::Binary { .. } | Expr::Unary { .. } => {
+                    Expr::Integer(_, _)
+                    | Expr::Boolean(_, _)
+                    | Expr::Variable(_, _)
+                    | Expr::Binary { .. }
+                    | Expr::Unary { .. } => {
                         func.instruction(&Instruction::Drop);
                     }
                     _ => {}

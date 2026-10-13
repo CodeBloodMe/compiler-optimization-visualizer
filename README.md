@@ -4,26 +4,24 @@
 [![Rust: 1.80+](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
 [![Target: WebAssembly](https://img.shields.io/badge/Target-WebAssembly-blueviolet.svg)](https://webassembly.org/)
 [![Runtime: Wasmtime](https://img.shields.io/badge/Runtime-Wasmtime-blue.svg)](https://wasmtime.dev/)
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen.svg)](.github/workflows/ci.yml)
 
-**Aegis** is an advanced, security-first compiler and WebAssembly execution environment designed to enforce principle-of-least-privilege host capability access, deterministic resource bounding (fuel budgeting and linear memory ceilings), and static taint flow verification.
-
-Rather than treating security as an external sandbox wrapper or optimization as a security-agnostic black box, Aegis tightly integrates capability declarations, static information flow tracking, and security-aware IR optimization directly into the compilation and execution pipeline.
+**Aegis** is a statically typed programming language and compiler targeting WebAssembly, integrating capability-based access control, deterministic resource bounding (fuel budgeting and linear memory ceilings), static information flow (taint) tracking, and security-aware intermediate representation (IR) optimization passes.
 
 ---
 
-## 📌 Core Research Motivation
+## 📌 Project Overview & Design Principles
 
-Traditional language toolchains and compiler suites (e.g., C/C++ via Clang/LLVM, standard Rust) separate code generation from execution policy:
-1. **Unchecked Ambient Authority:** Code implicitly accesses host APIs (file system, network, standard I/O) without declared contracts.
-2. **Denial-of-Service Vulnerabilities:** Unbounded recursion or infinite loops consume host CPU cores and memory indefinitely.
-3. **Security-Blind Transformations:** Compilers optimize for speed while disregarding taint leakage, side-channel amplification, or security invariants.
+Traditional systems and language runtimes frequently suffer from:
+1. **Unchecked Ambient Authority:** Programs implicitly gain access to host filesystems, network interfaces, and consoles without explicit declarations.
+2. **Denial-of-Service / Unbounded Loops:** Uncontrolled execution consumes unlimited CPU cycles and host memory.
+3. **Security-Blind Optimization:** Compilers optimize code for throughput while disregarding security boundaries, taint propagation, or trap behavior.
 
-**Aegis solves this via a unified pipeline:**
-- **Explicit Capability Contracts:** Modules must explicitly declare required host privileges (e.g., `requires console.write;`). The runtime verifies and refuses to invoke binaries demanding unauthorized capabilities.
-- **Deterministic Resource Budgets:** Programs run inside an isolated Wasmtime runtime with precise fuel counters and linear memory clamps. Fuel exhaustion terminates execution deterministically.
-- **Static Taint Tracking:** The semantic pipeline traces data flow from untrusted host inputs (sources) through assignments and branches into privileged operations (sinks), identifying vulnerabilities before code generation.
-- **Security-Aware IR Optimization:** Redundant computations are folded and dead branches eliminated *without* mutating security assertions or crossing capability boundaries.
+**Aegis addresses these challenges through a unified compilation and runtime pipeline:**
+- **Explicit Capability Contracts:** Modules must declare host privileges in source headers (e.g., `requires console.write;`, `requires host.read;`). The compiler enforces these declarations at compile time, and the runtime verifies them prior to execution.
+- **On-Demand Host Imports:** WebAssembly import entries are generated *only* for host functions actually called by the program. Pure compute modules contain zero host imports and execute under restrictive policies where all host access is disabled.
+- **Deterministic Resource Budgets:** Programs execute in an isolated Wasmtime environment with precise fuel accounting and memory limits. Fuel exhaustion terminates execution deterministically.
+- **Static Taint Analysis:** Information flow tracking with lexical scope stacks, branch state merging, and loop fixpoint iteration tracks untrusted inputs to sensitive sinks.
+- **Trap-Preserving IR Optimization:** Constant folding and algebraic simplification adhere to two's complement wrapping arithmetic and strictly preserve WebAssembly runtime traps (division by zero, `i32::MIN / -1`).
 
 ---
 
@@ -46,48 +44,53 @@ Traditional language toolchains and compiler suites (e.g., C/C++ via Clang/LLVM,
                - Type Checking (i32, bool, void)
                - Immutability & Scope Enforcement
                - Capability Requirement Checking
+               - Return Path Completeness Verification
+               - Integer Literal Range Validation
                               |
                               v
              [ Custom Typed Intermediate Representation ] (ir.rs)
-               - Control-Flow Lowering (Basic Blocks)
-               - Static IR Verifier & Invariant Checks
+               - Basic Block Lowering & CFG Construction
+               - Static IR Invariant Verification
                               |
               +---------------+---------------+
               |                               |
               v                               v
-    [ Static Taint Engine ]       [ Security-Aware Optimizer ]
-    - Source/Sanitizer/Sink       - Constant Folding & Propagation
-    - Flow Path Reconstruction    - Algebraic Simplification
-    - Vulnerability Reporting     - Safe Dead-Code Elimination
+    [ Static Taint Engine ]       [ Security-Aware IR Optimizer ]
+    - Lexical Scope Stacks        - Constant Folding (Wrapping)
+    - Sound Branch State Merging  - Trap Preservation (Div/Rem)
+    - Loop Fixpoint Iteration     - Algebraic Simplification
+    - Sanitizer Recognition       - Reachability-Based Dead Code Elimination
               |                               |
               +---------------+---------------+
                               |
                               v
                  [ WebAssembly Code Generator ] (codegen.rs)
+                   - Minimal Import Section (Used Hosts Only)
                    - Custom Binary Emitter (wasm-encoder)
-                   - Import / Export Tables
-                   - Bytecode Validation (wasmparser)
+                   - Binary Validation (wasmparser)
                               |
                               v
                [ Wasmtime Resource-Bounded Runtime ] (runtime.rs, policy.rs)
                  - TOML Policy Enforcement (capabilities & imports)
                  - Deterministic Fuel Consumption Engine
                  - Strict Linear Memory Ceilings (Pages)
-                 - Isolated Host Capability Interceptors
+                 - Sandboxed Host Function Handlers
 ```
 
 ---
 
 ## 🔤 AegisLang Specification
 
-AegisLang is a statically typed language tailored for resource-constrained, capability-secured modules.
+AegisLang is a statically typed language designed for resource-bounded and capability-governed WebAssembly execution.
 
-### Syntax Features
-- **Modules & Capabilities:** Explicit module name and `requires <capability>;` declarations.
-- **Functions:** Typed parameters and explicit return types (`-> i32`, `-> bool`, `-> void`).
-- **Variables:** Explicitly immutable (`let x: i32 = ...;`) or mutable (`let mut y: i32 = ...;`).
-- **Control Flow:** `if / else` branching, `while` loops, and structured `return`.
-- **Host Builtins:** Isolated builtins including `print_i32`, `print_bool`, `read_i32`, and `sanitize_i32`.
+### Implemented Features
+- **Module Declarations:** Named modules with explicit headers (`module <name>;`).
+- **Capability Requirements:** Explicit required capabilities (`requires console.write;`, `requires host.read;`).
+- **Static Types:** `i32` (32-bit signed integer), `bool` (boolean), `void` (function return).
+- **Variable Bindings:** Immutable (`let x: i32 = ...;`) and mutable (`let mut y: i32 = ...;`).
+- **Control Flow:** `if / else` branching, `while` loops, and return statements.
+- **Host Functions:** Privileged host builtins `print_i32(i32)`, `print_bool(bool)`, `read_i32() -> i32`, and certified sanitizer `sanitize_i32(i32) -> i32`.
+- **Wasm Codegen & Validation:** Generates valid WebAssembly bytecode validated with `wasmparser`.
 
 ### Example Program
 ```rust
@@ -98,102 +101,94 @@ requires console.write;
 
 fn main() -> i32 {
     let a: i32 = 10;
-    let b: i32 = 25;
-    let sum: i32 = a + b;
-    
-    // Privileged call checked at compile-time and runtime
-    print_i32(sum);
-    return sum;
+    let b: i32 = 20;
+    let result: i32 = a + b;
+    print_i32(result);
+    return 0;
 }
 ```
 
 ---
 
-## 🛡️ Capability-Based Access Control
+## 🔒 Verified Security Properties
 
-Aegis implements dual-phase capability enforcement:
+Aegis has been validated with regression and integration test suites covering the following properties:
 
-1. **Compile-Time Phase (`semantics.rs`):**
-   - The compiler verifies that any call to privileged functions (e.g., `print_i32` requiring `console.write`) is accompanied by an explicit `requires console.write;` declaration in the source.
-   - If undeclared, the compiler rejects the program with an informative diagnostic.
-
-2. **Runtime Policy Phase (`runtime.rs`, `policy.rs`):**
-   - The host provides a TOML policy file (e.g., `policies/default.toml` or `policies/restricted.toml`).
-   - Before instantiation, Aegis inspects the WebAssembly module's import table.
-   - If the module requires `console.write` but the runtime policy sets `console_write = false`, execution is halted **prior to invocation** with exit code `2` (`PolicyViolation`).
-
-### Example Policy (`policies/default.toml`)
-```toml
-[capabilities]
-console_write = true
-host_read = true
-
-[resources]
-initial_fuel = 1000000
-max_memory_pages = 16
-
-[security]
-strict_imports = true
-deny_unknown_imports = true
-```
-
----
-
-## ⚡ Resource-Bounded Execution Engine
-
-Aegis embeds **Wasmtime 49.0** configured with deterministic execution limits:
-
-- **Fuel Metering:** Instructions consume deterministic fuel units. Programs in unbounded loops exhaust their fuel budget and terminate safely with exit code `-1` (`FuelExhausted`).
-- **Linear Memory Clamping:** Guest memory growth is bounded to configured page limits (64 KiB per page), protecting the host against memory exhaustion.
-- **Runtime Error Classification:**
-  - `PolicyViolation` (Exit Code 2)
-  - `FuelExhausted` (Exit Code 3 / -1)
-  - `MemoryLimitExceeded` (Exit Code 4)
-  - `UnknownImport` (Exit Code 5)
-  - `Trap` (Exit Code 6)
-  - `MalformedBinary` (Exit Code 7)
+1. **Capability Enforcement at Compile Time:**
+   - Calling privileged host functions (`print_i32`, `read_i32`) without declaring their capability (`console.write`, `host.read`) is rejected during semantic analysis.
+2. **Capability Enforcement at Runtime:**
+   - If a host capability is revoked in the runtime TOML policy, the runtime halts execution prior to invocation with `PolicyViolation` and zero fuel consumed.
+3. **Minimal WebAssembly Imports:**
+   - Code generation scans the AST to import *only* host functions actually invoked.
+   - Pure computational modules emit zero host imports and run successfully under restrictive policies where all capabilities are disabled.
+4. **Sound Branch-State Merging in Taint Analysis:**
+   - If an untrusted source taints a variable in either branch of an `if-else` statement, the merge state retains the taint and alerts on downstream sensitive sinks.
+5. **Loop Carried Taint Fixpoint Iteration:**
+   - Taint carried across loop iterations (e.g., `x = y; y = read_i32();`) is tracked via iterative fixpoint analysis.
+6. **Lexical Scope Isolation:**
+   - Shadowed variables inside inner scopes do not pollute clean outer variables of the same name, preventing false positives.
+7. **Arithmetic Semantics and Trap Preservation:**
+   - Compile-time constant folding uses two's complement wrapping (`wrapping_add`, `wrapping_sub`, `wrapping_mul`), matching WebAssembly runtime execution (`2147483647 + 1 = -2147483648`).
+   - Constant folding explicitly preserves WebAssembly traps: division by zero (`x / 0`, `x % 0`) and overflow division (`i32::MIN / -1`) are not folded away into constants.
+8. **Exhaustive Return Path Checking:**
+   - Non-void functions must terminate with a return statement on all control-flow paths; missing returns are rejected at compile time.
+9. **Integer Literal Range Validation:**
+   - Literal values outside signed 32-bit integer limits (`-2147483648..=2147483647`) are rejected at compile time.
+10. **Visualizer Hardening:**
+    - The visualizer server binds strictly to `127.0.0.1` by default.
+    - All incoming payloads are validated for size (<= 1MB), type safety, and strictly bounded parameters.
+    - Policy TOML is generated using strongly typed primitives, eliminating TOML configuration injection.
+    - All external compiler subprocesses run with bounded timeouts (10s).
 
 ---
 
-## 🔍 Static Taint Analysis
+## 📊 Measured Benchmark Results
 
-The Aegis security engine (`src/security.rs`) models information flow:
-- **Taint Sources:** Operations introducing untrusted guest or host data (e.g., `read_i32()`).
-- **Propagation Rules:** Taint propagates across binary arithmetic expressions, variable assignments, and join points.
-- **Sanitizers:** Certified host transforms (e.g., `sanitize_i32(val)`) cleanse tainted values.
-- **Sensitive Sinks:** Privileged or observable outputs (e.g., `print_i32(sink)`).
+All metrics below are generated reproducibly by the automated benchmark harness ([`benchmarks/run_benchmarks.py`](benchmarks/run_benchmarks.py)) and recorded in [`benchmarks/benchmark_results.json`](benchmarks/benchmark_results.json):
 
-If tainted data reaches a sensitive sink without passing through a sanitizer, Aegis flags the violation with exact file, line, and column coordinates, displaying the entire causal trace path.
+| Metric | Measured Value | Methodology / Description |
+|:---|:---:|:---|
+| **Compilation Latency** | **114.8 ms** | Average of 10 runs (Lex $\to$ AST $\to$ IR $\to$ Codegen $\to$ Wasm validation) |
+| **Static Taint Analysis Latency** | **14.4 ms** | Average of 10 runs on `taint_vulnerability.aegis` |
+| **Vulnerability Detection Rate** | **100.0%** | 3 / 3 true positive cases detected in expanded evaluation corpus |
+| **False Positive Rate** | **0.0%** | 0 / 5 clean programs falsely flagged in evaluation corpus |
+| **Code Size Reduction** | **12.9%** | 124 bytes (unoptimized) $\to$ 108 bytes (optimized) on `math_opt.aegis` |
+| **Execution Fuel Reduction** | **44.4%** | 18 fuel units (unoptimized) $\to$ 10 fuel units (optimized) on `math_opt.aegis` |
+| **Resource Limit Enforcement** | **Deterministic (Exit 3)** | Execution terminates cleanly when fuel budget reaches 0 |
+
+### Evaluation Corpus Breakdown
+The evaluation corpus contains 8 labeled test programs:
+1. `taint_vulnerability.aegis`: Direct untrusted input into sensitive sink (**True Positive**)
+2. `branch_leak.aegis`: Branch-merged untrusted input into sensitive sink (**True Positive**)
+3. `loop_carried_taint.aegis`: Loop-carried untrusted input into sensitive sink (**True Positive**)
+4. `taint_sanitized.aegis`: Certified sanitizer before sensitive sink (**True Negative**)
+5. `both_sanitized.aegis`: Exhaustively sanitized branches before sink (**True Negative**)
+6. `scoped_shadow_clean.aegis`: Inner shadowed variable does not pollute outer variable (**True Negative**)
+7. `hello.aegis`: Clean deterministic computation (**True Negative**)
+8. `loop_fuel.aegis`: Clean iterative computation (**True Negative**)
 
 ---
 
-## 🚀 Security-Aware Optimization
+## ⚠️ Remaining Limitations
 
-The optimization engine (`src/optimizer.rs`) performs semantic-preserving transformations directly on the custom IR:
-- **Constant Folding:** Simplifies compile-time constants (e.g., `10 + 20 * 3` $\to$ `70`).
-- **Algebraic Simplification:** Eliminates identity expressions (e.g., `x + 0` $\to$ `x`, `x * 1` $\to$ `x`, `x * 0` $\to$ `0`).
-- **Safe Dead Code Elimination:** Prunes unreachable basic blocks while strictly preserving side-effecting capability calls.
-
-### Differential Verification
-All optimizations are verified with differential tests to ensure:
-- Identical return codes and observable outputs.
-- Substantial reduction in dynamic fuel consumption (up to 44.4% in compute kernels).
-- Guaranteed preservation of security invariants.
+1. **Type System Scope:** AegisLang currently supports `i32`, `bool`, and `void`. Floating-point arithmetic (`f32`, `f64`), arrays, pointers, strings, and user-defined structs are not yet implemented.
+2. **Intra-Procedural Taint Analysis:** Static taint analysis currently operates within single function bodies. Inter-procedural call-graph information flow across user-defined functions is planned for a future release.
+3. **LALRPOP Grammar Status:** The grammar specification in `src/aegis.lalrpop` is a formal non-executable LR(1) reference draft aligned with the AST. The production compiler executes the handwritten recursive-descent parser in `src/parser.rs` for detailed syntax diagnostics.
+4. **Mocked Host Input in Tests:** Runtime input fixture `read_i32()` currently returns a deterministic integer (`42`) for automated reproducible testing rather than interacting with interactive terminal stdin.
+5. **Visualizer Subprocess Model:** The visualizer server invokes the compiler via local subprocesses rather than running WebAssembly modules directly in-browser.
 
 ---
 
 ## 💻 Command-Line Interface (CLI)
 
-The `aegis` CLI exposes real compiler and runtime commands:
-
 ```bash
-# 1. Type-check, symbol resolve, and verify IR without emitting code
+# 1. Type-check, check capabilities, and verify return paths
 aegis check examples/hello.aegis
 
 # 2. Compile AegisLang source to WebAssembly binary
 aegis compile examples/hello.aegis -o build/hello.wasm
 
-# 3. Compile with security-aware optimizations enabled
+# 3. Compile with security-aware IR optimizations enabled
 aegis compile examples/math_opt.aegis --opt -o build/math_opt.wasm
 
 # 4. Inspect WebAssembly binary sections, imports, and exports
@@ -208,125 +203,25 @@ aegis analyze examples/taint_vulnerability.aegis
 
 ---
 
-## 📊 Empirical Benchmarks
+## 🖥️ Running the Visualizer Dashboard
 
-All benchmark metrics are generated via reproducible automated runs ([`benchmarks/run_benchmarks.py`](benchmarks/run_benchmarks.py)) using actual Wasmtime execution cycles and real compiler passes:
-
-| Benchmark / Evaluation Metric | Measurement | Description / Result |
-|:---|:---:|:---|
-| **Compilation Latency** | **34.8 ms** | Full pipeline (Lex $\to$ AST $\to$ IR $\to$ Codegen) |
-| **Static Security Analysis** | **26.2 ms** | Complete AST & IR taint flow reconstruction |
-| **Taint Vulnerability Detection Rate** | **100% (0% FP)** | Accurately identifies unsanitized flows; clears sanitized flows |
-| **Optimization Fuel Reduction** | **44.4%** | 18 fuel units (unoptimized) $\to$ 10 fuel units (optimized) |
-| **Binary Code Size Reduction** | **7.8%** | 205 bytes $\to$ 189 bytes |
-| **Fuel Exhaustion Termination** | **Deterministic** | Infinite loop cleanly trapped when budget reaches 0 |
-| **Policy Rejection Latency** | **9.8 ms** | Pre-invocation rejection of unauthorized capabilities |
-
----
-
-## 🖥️ Interactive Visualizer Dashboard
-
-A modern visualizer dashboard is included in [`visualizer/`](visualizer/) allowing interactive exploration:
-- **Code Editor:** Live AegisLang editing with preloaded security test kernels.
-- **Pipeline Actions:** Real-time Check, Run, Taint Analysis, and Optimization profiling.
-- **Resource Controls:** Live sliders for fuel budgets, memory pages, and capability authorization toggles.
-- **Optimization Diff:** Visual comparison of unoptimized vs. optimized fuel, bytecode sizes, and runtime output.
-- **Empirical Metrics:** Live graphs of benchmark latency, code size savings, and security detection rates.
-
-### Launching the Dashboard:
 ```bash
 python visualizer/server.py
 ```
-Then navigate to `http://localhost:8080` in your web browser.
+By default, the server binds to `http://127.0.0.1:8080`.
 
 ---
 
 ## 🧪 Testing and Verification
 
-The test suite covers full unit, integration, and security test suites:
-
+Run the full automated test suite:
 ```bash
 cargo test
+cargo clippy --all-targets
+cargo fmt --check
+python tests/test_visualizer.py
+python benchmarks/run_benchmarks.py
 ```
-
-### Verified Test Cases:
-- `test_valid_program_compiles`: End-to-end compilation of valid modules.
-- `test_invalid_syntax_rejected`: Parser rejects malformed syntax with line/col diagnostics.
-- `test_type_mismatch_rejected`: Type checker enforces strict typing (`i32` vs `bool`).
-- `test_immutable_reassignment_rejected`: Enforces variable immutability guarantees.
-- `test_missing_capability_rejected`: Detects and rejects missing capability requirements.
-- `test_unauthorized_capability_rejected`: Runtime policy halts ungranted capabilities.
-- `test_authorized_console_output`: Authorized host functions execute and capture guest output.
-- `test_fuel_exhaustion_terminates`: Deterministic termination under finite fuel budgets.
-- `test_malformed_wasm_rejected`: Validates binary verification against malformed Wasm byte streams.
-- `test_taint_vulnerability_detected`: Accurately traces source-to-sink vulnerability paths.
-- `test_taint_sanitized_flow_allowed`: Confirms certified sanitizers clear taint status.
-- `test_optimization_preserves_semantics`: Verifies unoptimized and optimized code produce identical results.
-
----
-
-## 📁 Repository Structure
-
-```text
-compiler-optimization-visualizer/
-├── .github/
-│   └── workflows/
-│       └── ci.yml               # GitHub Actions CI workflow
-├── benchmarks/
-│   ├── run_benchmarks.py        # Automated benchmark harness
-│   └── benchmark_results.json   # Empirical measurement outputs
-├── docs/
-│   └── review 1.pdf             # Review 1 presentation slides
-├── examples/
-│   ├── hello.aegis              # Basic integer arithmetic and console output
-│   ├── loop_fuel.aegis          # Infinite loop for resource limit testing
-│   ├── math_opt.aegis           # Optimization pass benchmark program
-│   ├── taint_sanitized.aegis    # Sanitized safe information flow
-│   ├── taint_vulnerability.aegis# Vulnerable taint propagation test
-│   └── unauthorized_cap.aegis   # Policy denial test program
-├── policies/
-│   ├── default.toml             # Standard policy (full capabilities & fuel)
-│   ├── restricted.toml          # Restricted policy (no console.write)
-│   └── low_fuel.toml            # Constrained fuel policy (500 units)
-├── src/
-│   ├── ast.rs                   # Abstract Syntax Tree definitions
-│   ├── codegen.rs               # WebAssembly code generator (wasm-encoder)
-│   ├── ir.rs                    # Custom typed IR & verifier
-│   ├── lexer.rs                 # Lexer & tokenizer
-│   ├── lib.rs                   # Core compiler library interface
-│   ├── main.rs                  # CLI command implementation (clap)
-│   ├── optimizer.rs             # Constant folding & dead code elimination
-│   ├── parser.rs                # Recursive-descent parser
-│   ├── policy.rs                # TOML policy parser & capability models
-│   ├── runtime.rs               # Wasmtime runtime & resource bounding
-│   ├── security.rs              # Static taint analysis engine
-│   ├── semantics.rs             # Symbol resolution & type checker
-│   ├── source.rs                # Span tracking & diagnostics
-│   └── types.rs                 # Type system representations
-├── tests/
-│   └── integration_tests.rs     # Automated test suite (12 tests)
-├── visualizer/
-│   ├── app.js                   # Visualizer frontend logic
-│   ├── index.html               # Visualizer dashboard UI
-│   ├── server.py                # Visualizer backend server
-│   └── style.css                # Visualizer styling
-├── Cargo.lock                   # Deterministic dependency lockfile
-├── Cargo.toml                   # Project dependencies and manifest
-├── LICENSE                      # MIT License
-└── README.md                    # Project documentation
-```
-
----
-
-## 📜 Academic & Research Context
-
-Aegis directly addresses the core research question:
-> *Can policy-aware compilation and explicit capability enforcement be integrated into a resource-bounded WebAssembly execution pipeline while maintaining correct behavior and acceptable compilation/runtime overhead?*
-
-Our empirical evaluation establishes:
-1. **Negligible Overhead:** Static analysis and capability checks add fewer than 30 ms to overall compilation latency.
-2. **Deterministic Safety:** Unchecked ambient authority and denial-of-service loops are eliminated at the language and runtime boundary.
-3. **Synergistic Optimization:** Security-aware IR optimizations reduce execution fuel consumption by over 40% without relaxing security guarantees.
 
 ---
 

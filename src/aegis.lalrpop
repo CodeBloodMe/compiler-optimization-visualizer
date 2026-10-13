@@ -1,5 +1,18 @@
-// Formal LALRPOP grammar definition for AegisLang
-// Evaluated as the formal LR(1) grammar specification for Aegis.
+// =============================================================================
+// AegisLang: Formal LR(1) Reference Grammar Specification (LALRPOP Draft)
+// =============================================================================
+//
+// STATUS: Formal Reference Grammar (Non-Executable Draft)
+//
+// NOTE:
+// This LALRPOP specification formally defines the canonical LR(1) grammar for
+// AegisLang. In the production Aegis compiler pipeline, parsing is carried out
+// by the recursive-descent parser (`src/parser.rs`), which provides rich span
+// tracking, source diagnostics, and specialized syntax error recovery.
+//
+// This file serves as the normative specification for language productions,
+// operator precedence, associativity, and AST node correspondence.
+// =============================================================================
 
 use crate::ast::*;
 use crate::types::Type;
@@ -11,18 +24,18 @@ pub Program: Program = {
     "module" <id:Ident> ";" <caps:CapabilityDecl*> <funcs:FunctionDecl*> => {
         Program {
             module_name: id,
+            module_span: Span::point(1, 1),
             capabilities: caps,
             functions: funcs,
-            span: Span::new(0, 0, 1, 1),
         }
     }
 };
 
-CapabilityDecl: CapabilityReq = {
+pub CapabilityDecl: CapabilityDecl = {
     "requires" <name:DottedIdent> ";" => {
-        CapabilityReq {
+        CapabilityDecl {
             name,
-            span: Span::new(0, 0, 1, 1),
+            span: Span::point(1, 1),
         }
     }
 };
@@ -32,20 +45,27 @@ DottedIdent: String = {
     <id:Ident> => id,
 };
 
-pub FunctionDecl: Function = {
-    "fn" <name:Ident> "(" <params:Comma<Param>> ")" "->" <ret:Type> "{" <body:Statement*> "}" => {
-        Function {
+pub FunctionDecl: FunctionDecl = {
+    "fn" <name:Ident> "(" <params:Comma<Param>> ")" "->" <ret:Type> <b:Block> => {
+        FunctionDecl {
             name,
             params,
             return_type: ret,
-            body,
-            span: Span::new(0, 0, 1, 1),
+            body: b,
+            span: Span::point(1, 1),
         }
     }
 };
 
 Param: Param = {
-    <name:Ident> ":" <ty:Type> => Param { name, ty, span: Span::new(0, 0, 1, 1) }
+    <name:Ident> ":" <ty:Type> => Param { name, ty, span: Span::point(1, 1) }
+};
+
+pub Block: Block = {
+    "{" <stmts:Statement*> "}" => Block {
+        statements: stmts,
+        span: Span::point(1, 1),
+    }
 };
 
 Type: Type = {
@@ -54,30 +74,30 @@ Type: Type = {
     "void" => Type::Void,
 };
 
-pub Statement: Stmt = {
-    "let" "mut" <name:Ident> ":" <ty:Type> "=" <init:Expr> ";" => {
-        Stmt::Let { name, ty, is_mut: true, init, span: Span::new(0, 0, 1, 1) }
+pub Statement: Statement = {
+    "let" "mut" <name:Ident> <ty:(":" <Type>)?> "=" <init:Expr> ";" => {
+        Statement::Let { name, is_mut: true, ty, init, span: Span::point(1, 1) }
     },
-    "let" <name:Ident> ":" <ty:Type> "=" <init:Expr> ";" => {
-        Stmt::Let { name, ty, is_mut: false, init, span: Span::new(0, 0, 1, 1) }
+    "let" <name:Ident> <ty:(":" <Type>)?> "=" <init:Expr> ";" => {
+        Statement::Let { name, is_mut: false, ty, init, span: Span::point(1, 1) }
     },
-    <name:Ident> "=" <val:Expr> ";" => {
-        Stmt::Assign { name, value: val, span: Span::new(0, 0, 1, 1) }
+    <target:Ident> "=" <val:Expr> ";" => {
+        Statement::Assign { target, value: val, span: Span::point(1, 1) }
     },
-    "if" <cond:Expr> "{" <then_b:Statement*> "}" "else" "{" <else_b:Statement*> "}" => {
-        Stmt::If { cond, then_branch: then_b, else_branch: Some(else_b), span: Span::new(0, 0, 1, 1) }
+    "if" <cond:Expr> <then_b:Block> "else" <else_b:Block> => {
+        Statement::If { cond, then_block: then_b, else_block: Some(else_b), span: Span::point(1, 1) }
     },
-    "if" <cond:Expr> "{" <then_b:Statement*> "}" => {
-        Stmt::If { cond, then_branch: then_b, else_branch: None, span: Span::new(0, 0, 1, 1) }
+    "if" <cond:Expr> <then_b:Block> => {
+        Statement::If { cond, then_block: then_b, else_block: None, span: Span::point(1, 1) }
     },
-    "while" <cond:Expr> "{" <body:Statement*> "}" => {
-        Stmt::While { cond, body, span: Span::new(0, 0, 1, 1) }
+    "while" <cond:Expr> <body:Block> => {
+        Statement::While { cond, body, span: Span::point(1, 1) }
     },
     "return" <val:Expr?> ";" => {
-        Stmt::Return { value: val, span: Span::new(0, 0, 1, 1) }
+        Statement::Return { value: val, span: Span::point(1, 1) }
     },
     <e:Expr> ";" => {
-        Stmt::Expr(e)
+        Statement::Expr(e)
     },
 };
 
@@ -87,129 +107,129 @@ pub Expr: Expr = {
 
 LogicalOrExpr: Expr = {
     <lhs:LogicalOrExpr> "||" <rhs:LogicalAndExpr> => Expr::Binary {
-        op: BinOp::Or,
+        op: BinaryOp::Or,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     LogicalAndExpr,
 };
 
 LogicalAndExpr: Expr = {
     <lhs:LogicalAndExpr> "&&" <rhs:EqualityExpr> => Expr::Binary {
-        op: BinOp::And,
+        op: BinaryOp::And,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     EqualityExpr,
 };
 
 EqualityExpr: Expr = {
     <lhs:EqualityExpr> "==" <rhs:RelationalExpr> => Expr::Binary {
-        op: BinOp::Eq,
+        op: BinaryOp::Eq,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     <lhs:EqualityExpr> "!=" <rhs:RelationalExpr> => Expr::Binary {
-        op: BinOp::Ne,
+        op: BinaryOp::Neq,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     RelationalExpr,
 };
 
 RelationalExpr: Expr = {
     <lhs:RelationalExpr> "<" <rhs:AdditiveExpr> => Expr::Binary {
-        op: BinOp::Lt,
+        op: BinaryOp::Lt,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     <lhs:RelationalExpr> "<=" <rhs:AdditiveExpr> => Expr::Binary {
-        op: BinOp::Le,
+        op: BinaryOp::Lte,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     <lhs:RelationalExpr> ">" <rhs:AdditiveExpr> => Expr::Binary {
-        op: BinOp::Gt,
+        op: BinaryOp::Gt,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     <lhs:RelationalExpr> ">=" <rhs:AdditiveExpr> => Expr::Binary {
-        op: BinOp::Ge,
+        op: BinaryOp::Gte,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     AdditiveExpr,
 };
 
 AdditiveExpr: Expr = {
     <lhs:AdditiveExpr> "+" <rhs:MultiplicativeExpr> => Expr::Binary {
-        op: BinOp::Add,
+        op: BinaryOp::Add,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     <lhs:AdditiveExpr> "-" <rhs:MultiplicativeExpr> => Expr::Binary {
-        op: BinOp::Sub,
+        op: BinaryOp::Sub,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     MultiplicativeExpr,
 };
 
 MultiplicativeExpr: Expr = {
     <lhs:MultiplicativeExpr> "*" <rhs:UnaryExpr> => Expr::Binary {
-        op: BinOp::Mul,
+        op: BinaryOp::Mul,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     <lhs:MultiplicativeExpr> "/" <rhs:UnaryExpr> => Expr::Binary {
-        op: BinOp::Div,
+        op: BinaryOp::Div,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     <lhs:MultiplicativeExpr> "%" <rhs:UnaryExpr> => Expr::Binary {
-        op: BinOp::Mod,
+        op: BinaryOp::Rem,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     UnaryExpr,
 };
 
 UnaryExpr: Expr = {
     "!" <e:UnaryExpr> => Expr::Unary {
-        op: UnOp::Not,
-        operand: Box::new(e),
-        span: Span::new(0, 0, 1, 1),
+        op: UnaryOp::Not,
+        expr: Box::new(e),
+        span: Span::point(1, 1),
     },
     "-" <e:UnaryExpr> => Expr::Unary {
-        op: UnOp::Neg,
-        operand: Box::new(e),
-        span: Span::new(0, 0, 1, 1),
+        op: UnaryOp::Neg,
+        expr: Box::new(e),
+        span: Span::point(1, 1),
     },
     PrimaryExpr,
 };
 
 PrimaryExpr: Expr = {
-    <n:IntLit> => Expr::Integer(n, Span::new(0, 0, 1, 1)),
-    "true" => Expr::Bool(true, Span::new(0, 0, 1, 1)),
-    "false" => Expr::Bool(false, Span::new(0, 0, 1, 1)),
-    <id:Ident> => Expr::Variable(id, Span::new(0, 0, 1, 1)),
+    <n:IntLit> => Expr::Integer(n, Span::point(1, 1)),
+    "true" => Expr::Boolean(true, Span::point(1, 1)),
+    "false" => Expr::Boolean(false, Span::point(1, 1)),
+    <id:Ident> => Expr::Variable(id, Span::point(1, 1)),
     <callee:Ident> "(" <args:Comma<Expr>> ")" => Expr::Call {
         callee,
         args,
-        span: Span::new(0, 0, 1, 1),
+        span: Span::point(1, 1),
     },
     "(" <e:Expr> ")" => e,
 };
@@ -226,4 +246,4 @@ Comma<T>: Vec<T> = {
 };
 
 Ident: String = r"[a-zA-Z_][a-zA-Z0-9_]*" => String::from(<>);
-IntLit: i32 = r"[0-9]+" => <>.parse::<i32>().unwrap();
+IntLit: i64 = r"[0-9]+" => <>.parse::<i64>().unwrap();

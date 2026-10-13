@@ -1,0 +1,15 @@
+module branch_leak;
+
+requires console.write;
+requires host.read;
+
+fn main() -> i32 {
+    let mut val: i32 = 0;
+    if true {
+        val = read_i32();
+    } else {
+        val = 100;
+    }
+    print_i32(val);
+    return 0;
+}

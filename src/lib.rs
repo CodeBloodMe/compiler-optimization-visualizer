@@ -14,7 +14,7 @@ pub mod types;
 use ast::Program;
 use codegen::WasmCodegen;
 use lexer::Lexer;
-use optimizer::Optimizer;
+pub use optimizer::{AstOptimizer, IrOptimizer, Optimizer};
 use parser::Parser;
 use policy::AegisPolicy;
 use runtime::{AegisRuntime, ExecutionResult};
@@ -54,6 +54,19 @@ pub fn analyze_source(source: &str) -> Result<TaintReport, Diagnostic> {
 
 pub fn execute_source(source: &str, policy: &AegisPolicy) -> Result<ExecutionResult, Diagnostic> {
     let wasm_bytes = compile_source(source, false)?;
-    let rt = AegisRuntime::new().map_err(|e| Diagnostic::error(e.to_string(), source::Span::point(1, 1)))?;
+    let rt = AegisRuntime::new()
+        .map_err(|e| Diagnostic::error(e.to_string(), source::Span::point(1, 1)))?;
     Ok(rt.execute(&wasm_bytes, policy))
+}
+
+pub fn lower_to_ir(source: &str) -> Result<ir::IrProgram, Diagnostic> {
+    let program = check_source(source)?;
+    ir::IrLowerer::lower_program(&program)
+}
+
+pub fn optimize_ir(ir_prog: &ir::IrProgram) -> Result<ir::IrProgram, Diagnostic> {
+    let mut opt = IrOptimizer::new();
+    let optimized = opt.optimize_program(ir_prog);
+    ir::IrLowerer::verify_ir(&optimized)?;
+    Ok(optimized)
 }

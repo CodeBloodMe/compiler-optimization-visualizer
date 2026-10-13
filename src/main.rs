@@ -1,7 +1,7 @@
+use clap::{Parser, Subcommand};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use clap::{Parser, Subcommand};
 
 use aegis::ir::IrLowerer;
 use aegis::policy::AegisPolicy;
@@ -76,11 +76,7 @@ fn main() -> ExitCode {
         Commands::Check { file } => handle_check(&file),
         Commands::Compile { file, output, opt } => handle_compile(&file, output, opt),
         Commands::Inspect { file, wat } => handle_inspect(&file, wat),
-        Commands::Run {
-            file,
-            policy,
-            fuel,
-        } => handle_run(&file, policy.as_deref(), fuel),
+        Commands::Run { file, policy, fuel } => handle_run(&file, policy.as_deref(), fuel),
         Commands::Analyze { file } => handle_analyze(&file),
     }
 }
@@ -181,7 +177,11 @@ fn handle_inspect(path: &Path, show_wat: bool) -> ExitCode {
         }
     };
 
-    println!("[aegis] Inspecting WebAssembly binary {:?} ({} bytes):", path, wasm_bytes.len());
+    println!(
+        "[aegis] Inspecting WebAssembly binary {:?} ({} bytes):",
+        path,
+        wasm_bytes.len()
+    );
     let engine = wasmtime::Engine::default();
     let module = match wasmtime::Module::new(&engine, &wasm_bytes) {
         Ok(m) => m,
@@ -194,7 +194,12 @@ fn handle_inspect(path: &Path, show_wat: bool) -> ExitCode {
     let mut import_count = 0;
     println!("  [Imports]:");
     for import in module.imports() {
-        println!("    - {}.{} ({:?})", import.module(), import.name(), import.ty());
+        println!(
+            "    - {}.{} ({:?})",
+            import.module(),
+            import.name(),
+            import.ty()
+        );
         import_count += 1;
     }
 
@@ -205,7 +210,10 @@ fn handle_inspect(path: &Path, show_wat: bool) -> ExitCode {
         export_count += 1;
     }
 
-    println!("  Summary: {} imports, {} exports", import_count, export_count);
+    println!(
+        "  Summary: {} imports, {} exports",
+        import_count, export_count
+    );
 
     if show_wat {
         println!("  [Disassembly (WAT)]:");
@@ -242,7 +250,7 @@ fn handle_run(file: &Path, policy_path: Option<&Path>, fuel_override: Option<u64
     }
 
     // Check if input is .wasm or .aegis
-    let wasm_bytes = if file.extension().map_or(false, |ext| ext == "wasm") {
+    let wasm_bytes = if file.extension().is_some_and(|ext| ext == "wasm") {
         match fs::read(file) {
             Ok(b) => b,
             Err(e) => {
@@ -275,7 +283,10 @@ fn handle_run(file: &Path, policy_path: Option<&Path>, fuel_override: Option<u64
         }
     };
 
-    println!("[aegis] Executing with resource limits (initial fuel: {})...", policy.resources.initial_fuel);
+    println!(
+        "[aegis] Executing with resource limits (initial fuel: {})...",
+        policy.resources.initial_fuel
+    );
     let result = runtime.execute(&wasm_bytes, &policy);
 
     for line in &result.output {
@@ -312,7 +323,10 @@ fn handle_analyze(file: &Path) -> ExitCode {
         }
     };
 
-    println!("[aegis] Performing static security & taint analysis on {:?}...", file);
+    println!(
+        "[aegis] Performing static security & taint analysis on {:?}...",
+        file
+    );
     match analyze_source(&source) {
         Ok(report) => {
             println!("--------------------------------------------------");
@@ -322,12 +336,7 @@ fn handle_analyze(file: &Path) -> ExitCode {
             println!("--------------------------------------------------");
 
             for (idx, finding) in report.findings.iter().enumerate() {
-                println!(
-                    "[{}] {:?}: {}",
-                    idx + 1,
-                    finding.kind,
-                    finding.description
-                );
+                println!("[{}] {:?}: {}", idx + 1, finding.kind, finding.description);
                 println!("  Location: {}", finding.span);
                 println!("  Trace path:");
                 for step in &finding.flow_path {

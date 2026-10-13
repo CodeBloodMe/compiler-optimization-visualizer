@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
 use crate::ast::*;
 use crate::source::{Diagnostic, Span};
 use crate::types::Type;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
 pub struct Symbol {
@@ -24,6 +24,12 @@ impl Scope {
     }
 }
 
+impl Default for Scope {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct SymbolTable {
     scopes: Vec<Scope>,
 }
@@ -34,7 +40,15 @@ impl SymbolTable {
             scopes: vec![Scope::new()],
         }
     }
+}
 
+impl Default for SymbolTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SymbolTable {
     pub fn enter_scope(&mut self) {
         self.scopes.push(Scope::new());
     }
@@ -47,7 +61,10 @@ impl SymbolTable {
         let current = self.scopes.last_mut().unwrap();
         if let Some(existing) = current.symbols.get(&symbol.name) {
             return Err(Diagnostic::error(
-                format!("Identifier '{}' already declared in this scope", symbol.name),
+                format!(
+                    "Identifier '{}' already declared in this scope",
+                    symbol.name
+                ),
                 symbol.span,
             )
             .with_hint(format!("Previous declaration was at {}", existing.span)));
@@ -109,7 +126,7 @@ impl SemanticAnalyzer {
                 name: "read_i32".to_string(),
                 params: vec![],
                 return_type: Type::I32,
-                required_capability: None, // untrusted source
+                required_capability: Some("host.read"),
             },
         );
         functions.insert(
@@ -129,7 +146,15 @@ impl SemanticAnalyzer {
             current_fn_return: Type::Void,
         }
     }
+}
 
+impl Default for SemanticAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SemanticAnalyzer {
     pub fn analyze_program(&mut self, program: &Program) -> Result<(), Diagnostic> {
         // 1. Record declared capabilities
         for cap in &program.capabilities {
@@ -179,8 +204,45 @@ impl SemanticAnalyzer {
 
         self.analyze_block(&f.body)?;
 
+        // Ensure non-void function returns along all execution paths
+        if f.return_type != Type::Void && !Self::block_definitely_returns(&f.body) {
+            return Err(Diagnostic::error(
+                format!(
+                    "Function '{}' with return type '{}' does not return a value on all execution paths",
+                    f.name, f.return_type
+                ),
+                f.span,
+            ));
+        }
+
         self.symbols.exit_scope();
         Ok(())
+    }
+
+    pub fn block_definitely_returns(block: &Block) -> bool {
+        for stmt in &block.statements {
+            if Self::stmt_definitely_returns(stmt) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn stmt_definitely_returns(stmt: &Statement) -> bool {
+        match stmt {
+            Statement::Return { .. } => true,
+            Statement::If {
+                then_block,
+                else_block: Some(eb),
+                ..
+            } => Self::block_definitely_returns(then_block) && Self::block_definitely_returns(eb),
+            Statement::If {
+                else_block: None, ..
+            } => false,
+            Statement::While { .. } => false,
+            Statement::Expr(Expr::Block(b)) => Self::block_definitely_returns(b),
+            _ => false,
+        }
     }
 
     fn analyze_block(&mut self, block: &Block) -> Result<(), Diagnostic> {
@@ -225,7 +287,11 @@ impl SemanticAnalyzer {
                 })?;
                 Ok(())
             }
-            Statement::Assign { target, value, span } => {
+            Statement::Assign {
+                target,
+                value,
+                span,
+            } => {
                 let sym = self.symbols.lookup(target).ok_or_else(|| {
                     Diagnostic::error(
                         format!("Cannot assign to undeclared variable '{}'", target),
@@ -313,7 +379,20 @@ impl SemanticAnalyzer {
 
     pub fn check_expr(&self, expr: &Expr) -> Result<Type, Diagnostic> {
         match expr {
-            Expr::Integer(_, _) => Ok(Type::I32),
+            Expr::Integer(val, span) => {
+                if *val < (i32::MIN as i64) || *val > (i32::MAX as i64) {
+                    return Err(Diagnostic::error(
+                        format!(
+                            "Integer literal {} out of range for i32 (expected between {} and {})",
+                            val,
+                            i32::MIN,
+                            i32::MAX
+                        ),
+                        *span,
+                    ));
+                }
+                Ok(Type::I32)
+            }
             Expr::Boolean(_, _) => Ok(Type::Bool),
             Expr::Variable(name, span) => {
                 let sym = self.symbols.lookup(name).ok_or_else(|| {
@@ -381,21 +460,39 @@ impl SemanticAnalyzer {
                 }
             }
             Expr::Unary { op, expr, span } => {
-                let inner_ty = self.check_expr(expr)?;
                 match op {
                     UnaryOp::Neg => {
+                        // Accept literal -2147483648 as valid i32::MIN
+                        if let Expr::Integer(val, _) = &**expr {
+                            if *val == 2147483648 {
+                                return Ok(Type::I32);
+                            } else if *val > 2147483648 {
+                                return Err(Diagnostic::error(
+                                    format!("Integer literal -{} out of range for i32", val),
+                                    *span,
+                                ));
+                            }
+                        }
+                        let inner_ty = self.check_expr(expr)?;
                         if inner_ty != Type::I32 {
                             return Err(Diagnostic::error(
-                                format!("Unary negation '-' requires i32 operand, found {}", inner_ty),
+                                format!(
+                                    "Unary negation '-' requires i32 operand, found {}",
+                                    inner_ty
+                                ),
                                 *span,
                             ));
                         }
                         Ok(Type::I32)
                     }
                     UnaryOp::Not => {
+                        let inner_ty = self.check_expr(expr)?;
                         if inner_ty != Type::Bool {
                             return Err(Diagnostic::error(
-                                format!("Logical not '!' requires bool operand, found {}", inner_ty),
+                                format!(
+                                    "Logical not '!' requires bool operand, found {}",
+                                    inner_ty
+                                ),
                                 *span,
                             ));
                         }
@@ -409,17 +506,18 @@ impl SemanticAnalyzer {
                 })?;
 
                 // Check capability requirements for privileged functions
-                if let Some(required_cap) = sig.required_capability {
-                    if !self.declared_capabilities.contains(required_cap) {
-                        return Err(Diagnostic::error(
-                            format!(
-                                "Privileged host function '{}' requires capability '{}', which is not declared in module header",
-                                callee, required_cap
-                            ),
-                            *span,
-                        )
-                        .with_hint(format!("Add 'requires {};' at the top of the module", required_cap)));
-                    }
+                if let Some(required_cap) = sig
+                    .required_capability
+                    .filter(|cap| !self.declared_capabilities.contains(*cap))
+                {
+                    return Err(Diagnostic::error(
+                        format!(
+                            "Privileged host function '{}' requires capability '{}', which is not declared in module header",
+                            callee, required_cap
+                        ),
+                        *span,
+                    )
+                    .with_hint(format!("Add 'requires {};' at the top of the module", required_cap)));
                 }
 
                 if args.len() != sig.params.len() {

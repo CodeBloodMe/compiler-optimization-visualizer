@@ -1,0 +1,17 @@
+module loop_carried_taint;
+
+requires console.write;
+requires host.read;
+
+fn main() -> i32 {
+    let mut x: i32 = 0;
+    let mut y: i32 = 10;
+    let mut i: i32 = 0;
+    while i < 3 {
+        x = y;
+        y = read_i32();
+        i = i + 1;
+    }
+    print_i32(x);
+    return 0;
+}
