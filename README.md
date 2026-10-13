@@ -99,7 +99,7 @@ compiler-optimization-visualizer/
 ### Quick Start
 1. Clone the repository:
    ```bash
-   git clone https://github.com/ColdBloodMe/compiler-optimization-visualizer.git
+   git clone https://github.com/CodeBloodMe/compiler-optimization-visualizer.git
    cd compiler-optimization-visualizer
    ```
 
