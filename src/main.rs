@@ -42,6 +42,10 @@ enum Commands {
     Inspect {
         /// WebAssembly file path (.wasm)
         file: PathBuf,
+
+        /// Print WebAssembly Text Format (WAT) disassembly
+        #[arg(long)]
+        wat: bool,
     },
 
     /// Execute a compiled WebAssembly binary or Aegis program under runtime policy & resource limits
@@ -71,7 +75,7 @@ fn main() -> ExitCode {
     match cli.command {
         Commands::Check { file } => handle_check(&file),
         Commands::Compile { file, output, opt } => handle_compile(&file, output, opt),
-        Commands::Inspect { file } => handle_inspect(&file),
+        Commands::Inspect { file, wat } => handle_inspect(&file, wat),
         Commands::Run {
             file,
             policy,
@@ -168,7 +172,7 @@ fn handle_compile(path: &Path, output: Option<PathBuf>, opt: bool) -> ExitCode {
     }
 }
 
-fn handle_inspect(path: &Path) -> ExitCode {
+fn handle_inspect(path: &Path, show_wat: bool) -> ExitCode {
     let wasm_bytes = match fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -202,6 +206,21 @@ fn handle_inspect(path: &Path) -> ExitCode {
     }
 
     println!("  Summary: {} imports, {} exports", import_count, export_count);
+
+    if show_wat {
+        println!("  [Disassembly (WAT)]:");
+        match wasmprinter::print_bytes(&wasm_bytes) {
+            Ok(wat_str) => {
+                for line in wat_str.lines() {
+                    println!("    {}", line);
+                }
+            }
+            Err(e) => {
+                eprintln!("  Failed to disassemble WAT: {}", e);
+            }
+        }
+    }
+
     ExitCode::SUCCESS
 }
 

@@ -1,0 +1,229 @@
+// Formal LALRPOP grammar definition for AegisLang
+// Evaluated as the formal LR(1) grammar specification for Aegis.
+
+use crate::ast::*;
+use crate::types::Type;
+use crate::source::Span;
+
+grammar;
+
+pub Program: Program = {
+    "module" <id:Ident> ";" <caps:CapabilityDecl*> <funcs:FunctionDecl*> => {
+        Program {
+            module_name: id,
+            capabilities: caps,
+            functions: funcs,
+            span: Span::new(0, 0, 1, 1),
+        }
+    }
+};
+
+CapabilityDecl: CapabilityReq = {
+    "requires" <name:DottedIdent> ";" => {
+        CapabilityReq {
+            name,
+            span: Span::new(0, 0, 1, 1),
+        }
+    }
+};
+
+DottedIdent: String = {
+    <id1:Ident> "." <id2:Ident> => format!("{}.{}", id1, id2),
+    <id:Ident> => id,
+};
+
+pub FunctionDecl: Function = {
+    "fn" <name:Ident> "(" <params:Comma<Param>> ")" "->" <ret:Type> "{" <body:Statement*> "}" => {
+        Function {
+            name,
+            params,
+            return_type: ret,
+            body,
+            span: Span::new(0, 0, 1, 1),
+        }
+    }
+};
+
+Param: Param = {
+    <name:Ident> ":" <ty:Type> => Param { name, ty, span: Span::new(0, 0, 1, 1) }
+};
+
+Type: Type = {
+    "i32" => Type::I32,
+    "bool" => Type::Bool,
+    "void" => Type::Void,
+};
+
+pub Statement: Stmt = {
+    "let" "mut" <name:Ident> ":" <ty:Type> "=" <init:Expr> ";" => {
+        Stmt::Let { name, ty, is_mut: true, init, span: Span::new(0, 0, 1, 1) }
+    },
+    "let" <name:Ident> ":" <ty:Type> "=" <init:Expr> ";" => {
+        Stmt::Let { name, ty, is_mut: false, init, span: Span::new(0, 0, 1, 1) }
+    },
+    <name:Ident> "=" <val:Expr> ";" => {
+        Stmt::Assign { name, value: val, span: Span::new(0, 0, 1, 1) }
+    },
+    "if" <cond:Expr> "{" <then_b:Statement*> "}" "else" "{" <else_b:Statement*> "}" => {
+        Stmt::If { cond, then_branch: then_b, else_branch: Some(else_b), span: Span::new(0, 0, 1, 1) }
+    },
+    "if" <cond:Expr> "{" <then_b:Statement*> "}" => {
+        Stmt::If { cond, then_branch: then_b, else_branch: None, span: Span::new(0, 0, 1, 1) }
+    },
+    "while" <cond:Expr> "{" <body:Statement*> "}" => {
+        Stmt::While { cond, body, span: Span::new(0, 0, 1, 1) }
+    },
+    "return" <val:Expr?> ";" => {
+        Stmt::Return { value: val, span: Span::new(0, 0, 1, 1) }
+    },
+    <e:Expr> ";" => {
+        Stmt::Expr(e)
+    },
+};
+
+pub Expr: Expr = {
+    LogicalOrExpr
+};
+
+LogicalOrExpr: Expr = {
+    <lhs:LogicalOrExpr> "||" <rhs:LogicalAndExpr> => Expr::Binary {
+        op: BinOp::Or,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    LogicalAndExpr,
+};
+
+LogicalAndExpr: Expr = {
+    <lhs:LogicalAndExpr> "&&" <rhs:EqualityExpr> => Expr::Binary {
+        op: BinOp::And,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    EqualityExpr,
+};
+
+EqualityExpr: Expr = {
+    <lhs:EqualityExpr> "==" <rhs:RelationalExpr> => Expr::Binary {
+        op: BinOp::Eq,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    <lhs:EqualityExpr> "!=" <rhs:RelationalExpr> => Expr::Binary {
+        op: BinOp::Ne,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    RelationalExpr,
+};
+
+RelationalExpr: Expr = {
+    <lhs:RelationalExpr> "<" <rhs:AdditiveExpr> => Expr::Binary {
+        op: BinOp::Lt,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    <lhs:RelationalExpr> "<=" <rhs:AdditiveExpr> => Expr::Binary {
+        op: BinOp::Le,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    <lhs:RelationalExpr> ">" <rhs:AdditiveExpr> => Expr::Binary {
+        op: BinOp::Gt,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    <lhs:RelationalExpr> ">=" <rhs:AdditiveExpr> => Expr::Binary {
+        op: BinOp::Ge,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    AdditiveExpr,
+};
+
+AdditiveExpr: Expr = {
+    <lhs:AdditiveExpr> "+" <rhs:MultiplicativeExpr> => Expr::Binary {
+        op: BinOp::Add,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    <lhs:AdditiveExpr> "-" <rhs:MultiplicativeExpr> => Expr::Binary {
+        op: BinOp::Sub,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    MultiplicativeExpr,
+};
+
+MultiplicativeExpr: Expr = {
+    <lhs:MultiplicativeExpr> "*" <rhs:UnaryExpr> => Expr::Binary {
+        op: BinOp::Mul,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    <lhs:MultiplicativeExpr> "/" <rhs:UnaryExpr> => Expr::Binary {
+        op: BinOp::Div,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    <lhs:MultiplicativeExpr> "%" <rhs:UnaryExpr> => Expr::Binary {
+        op: BinOp::Mod,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        span: Span::new(0, 0, 1, 1),
+    },
+    UnaryExpr,
+};
+
+UnaryExpr: Expr = {
+    "!" <e:UnaryExpr> => Expr::Unary {
+        op: UnOp::Not,
+        operand: Box::new(e),
+        span: Span::new(0, 0, 1, 1),
+    },
+    "-" <e:UnaryExpr> => Expr::Unary {
+        op: UnOp::Neg,
+        operand: Box::new(e),
+        span: Span::new(0, 0, 1, 1),
+    },
+    PrimaryExpr,
+};
+
+PrimaryExpr: Expr = {
+    <n:IntLit> => Expr::Integer(n, Span::new(0, 0, 1, 1)),
+    "true" => Expr::Bool(true, Span::new(0, 0, 1, 1)),
+    "false" => Expr::Bool(false, Span::new(0, 0, 1, 1)),
+    <id:Ident> => Expr::Variable(id, Span::new(0, 0, 1, 1)),
+    <callee:Ident> "(" <args:Comma<Expr>> ")" => Expr::Call {
+        callee,
+        args,
+        span: Span::new(0, 0, 1, 1),
+    },
+    "(" <e:Expr> ")" => e,
+};
+
+Comma<T>: Vec<T> = {
+    <v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};
+
+Ident: String = r"[a-zA-Z_][a-zA-Z0-9_]*" => String::from(<>);
+IntLit: i32 = r"[0-9]+" => <>.parse::<i32>().unwrap();
